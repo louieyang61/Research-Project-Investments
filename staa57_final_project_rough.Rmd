@@ -1,0 +1,138 @@
+---
+title: "STAA57 Group Project"
+author: "Yuze Fu 1009918467, Fanglu Yang (number), Michael Stevenson Ong 1009932423"
+date: "2024-03-29"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include = FALSE}
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(tidyr)
+d <- read.csv("~/Documents/UofT/UTSC Courses/2024 Winter/STAA57H3 - Intro to Data Science/STAA57 Project/STAA57 Project (My)/research_funding_summary_2004-2024_en.csv")
+```
+
+# 1. Rationale
+
+# 1.1 Summary of Data
+```{r, echo=FALSE}
+glimpse(d)
+```
+The dataset is retrieved from the Ontario Data Catalogue from <https://data.ontario.ca/dataset/ontario-research-funding-summary> that was last refreshed in March 18, 2024 regarding comprehensive overview of research projects funded by the The Ministry of Colleges and Universities, from the year 2004 to 2024, in Ontario. This dataset has a total of 5511 reported entries with 21 variables.
+
+The following is a breakdown of the variables that this report uses:
+
+1. Approval.Date = (chr) The date when the research funding is approved
+
+2. Land.Research.Institution = (chr) The lead institution doing the research
+
+3. City = (chr) The city where the institution is located
+
+4. Ontario.Commitment = (chr) The amount of money in Canadian Dollars that The Ministry of Colleges and Universities is funding
+
+5. Total.Project.Costs = (chr) The amount of money in Canadian Dollars that the actual project costs
+
+## 1.2 Background of Data
+The Ministry of Colleges and Universities stores a detailed overview of research initiatives in Ontario including the program type, project title and its description, approved date, lead research institution and its city, the amount of funding provided, the actual cost of the project, and other relevant administrative information. This dataset which is updated annually, contains all government-recognized research initiatives between October 27, 2004 and March 31, 2024.
+
+## 1.3 Data Cleaning
+```{r}
+d = d %>% select(Lead.Research.Institution, Approval.Date, City, Ontario.Commitment, Total.Project.Costs)
+d = d %>% mutate(commitment = as.numeric(str_remove_all(str_remove_all(Ontario.Commitment, "\\$"), ",")))
+d = d %>% mutate(cost = as.numeric(str_remove_all(str_remove_all(Total.Project.Costs, "\\$"), ",")))
+d = d %>% mutate(city = (str_remove_all(City, " ")))
+d = d %>% mutate(institution = Lead.Research.Institution)
+d = d %>% mutate(year = as.numeric(str_sub(Approval.Date, end = 4)))
+```
+Some data cleaning is done to fix improper datatype, such as the *Ontario.Commitment* and *Total.Project.Costs* are made *num* instead of *chr*, without the dollar ($) and comma sign, as well as to cater the need of extracting the 'year' only out of *Approval.Date* and made *num* instead of *chr*.
+
+## 1.4 Research Question
+How does research investments by Ministry of Colleges and Universities vary accross different colleges and universities in Toronto?
+
+# 2. Analysis
+
+## 2.1 General Analysis
+```{r}
+DM = d %>% select(year, commitment, cost)
+DM = DM %>% group_by(year) %>% summarise(commitment = sum(commitment), cost = sum(cost))
+glimpse(DM)
+```
+<div align="center"> __data1__ </div>
+
+**data1** suggests that Ministry of Colleges and Universities' investments on research generally increase as research costs increase from 2004 to 2024. This rising trend indicates that the government values research initiatives, which can be interpreted as the government's effort to increase the high level education quality year after year.
+
+## 2.2 How the Reseearch Question is Formed
+```{r}
+CM = d %>% select(city, commitment, cost)
+CM = CM %>% group_by(city) %>% summarise(commitment = sum(commitment), cost = sum(cost))
+CM = CM %>% arrange(desc(commitment))
+```
+<div align="center"> __data2__ </div>
+
+**data2** orders the research with the most *commitment* in comparison to cities in Ontario. Since Toronto holds the most research as well as the most amount of money that the Ministry of Colleges and Universities invest on, the analysis will be narrowed down to colleges and universities in Toronto only.
+
+```{r}
+t = d %>% filter(city == "Toronto") %>% select(institution, commitment, cost)
+t = t %>% filter(grepl("university", institution, ignore.case = TRUE) | grepl("college", institution, ignore.case = TRUE))
+t = t %>% filter(!grepl("hospital", institution, ignore.case = TRUE) & !grepl("health", institution, ignore.case = TRUE))
+t_box = t
+t = t %>% group_by(institution) %>% summarise(N = n(), commitment = sum(commitment), cost = sum(cost))
+t = t %>% arrange(desc(N))
+t <- head(t, n = 8)
+t
+```
+<div align="center"> __data3__ </div>
+**data3**
+
+```{r}
+t_avg = t %>% mutate(avg_commitment = commitment / N, avg_cost = cost / N) %>% mutate(avg_ratio = avg_commitment / avg_cost)
+```
+<div align="center"> __data4__ </div>
+**data4**
+
+```{r}
+t_box = t_box %>% filter(institution %in% c("University of Toronto", "York University", "Toronto Metropolitan University (formerly Ryerson University)", "Ontario College of Art and Design (OCAD) University", "George Brown College of Applied Arts and Technology", "Royal Military College of Canada", "Humber College", "Seneca College of Applied Arts and Technology")) %>% mutate(ratio = commitment / cost)
+
+box_graph = ggplot(t_box, aes(x = institution, y = ratio)) + geom_boxplot() + theme(axis.text.x = element_text(angle = 90))
+box_graph
+```
+<div align="center"> __data5__ </div>
+**data5**
+
+```{r}
+t_curve = d %>% filter(city == "Toronto") %>% filter(institution %in% c("University of Toronto", "York University", "Toronto Metropolitan University (formerly Ryerson University)", "Ontario College of Art and Design (OCAD) University", "George Brown College of Applied Arts and Technology", "Royal Military College of Canada", "Humber College", "Seneca College of Applied Arts and Technology")) %>% select(year, institution, commitment, cost)
+t_curve_one = t_curve %>% group_by(year) %>% summarise(commitment = sum(commitment), cost = sum(cost))
+t_curve_one <- pivot_longer(t_curve_one, cols = c(commitment, cost), names_to = "type", values_to = "value")
+one_graph = ggplot(t_curve_one, aes(x = year, y = value, color = type)) + geom_line() + scale_y_continuous(labels = scales::dollar)
+one_graph
+```
+<div align="center"> __data6__ </div>
+**data6**
+
+```{r}
+t_curve_eight = t_curve %>% group_by(year, institution) %>% summarise(commitment = sum(commitment), cost = sum(cost), .groups = 'drop')
+t_curve_eight <- pivot_longer(t_curve_eight, cols = c(commitment, cost), names_to = "type", values_to = "value")
+eight_graph = ggplot(t_curve_eight, aes(x = year, y = value, color = type)) +
+  geom_line() +
+  facet_wrap(~institution) + 
+  scale_y_continuous(labels = scales::dollar)
+eight_graph
+```
+<div align="center"> __data7__ </div>
+**data7**
+
+
+```{r}
+t_bar = d %>% filter(institution == "University of Toronto") %>% select(year, commitment, cost)
+t_bar = d %>% group_by(year) %>% summarise(commitment = sum(commitment), cost = sum(cost))
+t_bar <- pivot_longer(t_bar, cols = c(commitment, cost), names_to = "type", values_to = "value")
+bar_graph = ggplot(t_bar, aes(x = year, y = value, fill = type)) + geom_bar(position = "dodge", stat = "identity") + scale_y_continuous(labels = scales::dollar)
+bar_graph
+```
+<div align="center"> __data8__ </div>
+**data8**
